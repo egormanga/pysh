@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # PySH
 
-import git, PyT9, readline, rlcompleter
+import git, PyT9, codeop, readline, rlcompleter
 from . import env, shell
 from utils.nolog import *
 
@@ -49,15 +49,18 @@ def expr(c):
 		if (shutil.which(sc[0])): return shell.NativeCommand(*sc)
 	if (mode == 'sh'): print(f"Command not found: «{sc[0]}»"); return
 
-	try: return shell.PythonCommand(compile(c, '<pysh>', 'eval'))
+	try: code = codeop.compile_command(c, '<pysh>', 'eval')
 	except SyntaxError:
-		try: return shell.PythonCommand(compile(c, '<pysh>', 'exec'))
-		except SyntaxError as ex:
-			if ('unexpected EOF while parsing' in ex.args[0]): return readexpr(c+'\n')
+		try: code = codeop.compile_command(c, '<pysh>', 'exec')
+		except SyntaxError as ex: return shell.PythonCommand(ex.with_traceback(None))
+	if (code is None):
+		if (not c): return
+		return readexpr(c+'\n')
+	return shell.PythonCommand(code)
 
 class Completer(rlcompleter.Completer):
 	def global_matches(self, text):
-		return super().global_matches(text) + glob.glob(text+'*')
+		return super().global_matches(text) + [i+'/' if (os.path.isdir(i)) else i for i in glob.glob(text+'*')]
 completer = Completer()
 
 _exit = exit
@@ -66,6 +69,11 @@ def exit(*args, **kwargs):
 	_exit(*args, **kwargs)
 
 def main():
+	signal.signal(signal.SIGTERM, noop)
+	signal.signal(signal.SIGQUIT, noop)
+
+	os.environ['PATH'] = subprocess.getoutput("sh -c '. /etc/environment && echo $PATH'") # TODO FIXME lol
+
 	try: readline.read_history_file(histfile)
 	except FileNotFoundError: pass
 	for i in (
@@ -78,7 +86,7 @@ def main():
 		'tab: complete',
 	): readline.parse_and_bind(i)
 	readline.set_completer(completer.complete)
-	readline.set_completer_delims(' \t\n`~!@#$%^&*()-=+[{]}\\|;:\'",<>?') # TODO
+	readline.set_completer_delims(' \t\n`!@#$%^&*()-=+[{]}\\|;:\'",<>?') # TODO
 	#readline.set_completion_display_matches_hook(completer.display) # also TODO
 
 	try:
@@ -88,7 +96,7 @@ def main():
 				if (p is None): continue
 				p.run()
 				p.wait()
-			except KeyboardInterrupt as ex: print(f"\033[2m^C\n{type(ex).__name__}\033[0m")
+			except KeyboardInterrupt as ex: print(f"\n\033[2m{type(ex).__name__}\033[0m")
 	finally: readline.write_history_file(histfile)
 
 if (__name__ == '__main__'): exit(main())

@@ -35,17 +35,22 @@ class NativeCommand(Command):
 		self.wait = self.process.wait
 
 	def getoutput(self):
+		self.stdout = subprocess.PIPE
 		self.run()
 		return self.process.communicate()[0]
 
 class PythonCommand(Command):
 	def run(self):
-		try: r = eval(self.cmd, globals())
+		try:
+			if (isinstance(self.cmd, BaseException)): raise self.cmd
+			r = eval(self.cmd, globals())
+		except SystemExit: raise
 		except BaseException as ex:
 			self.stderr.write(f"\033[91m{type(ex).__name__}\033[0m{f': {ex}' if (str(ex)) else ''}\n")
 			env.lastex = sys.exc_info()
 		else:
-			if (r is not None): self.stdout.write(repr(r)+'\n')
+			self.stdout.write(repr(r)+'\n' if (r is not None) else '')
+			globals()['_'], env.lastex = r, None
 
 class cd(BuiltinCommand):
 	def run(self):
@@ -53,7 +58,10 @@ class cd(BuiltinCommand):
 
 class tb(BuiltinCommand):
 	def run(self):
-		self.stderr.write(traceback.format_exception(*env.lastex))
+		if (not hasattr(env, 'lastex')): return
+		tb = traceback.format_exception(*env.lastex)
+		del tb[1], tb[-1]
+		self.stderr.write(str().join(tb))
 
 class which(BuiltinCommand):
 	def run(self):
