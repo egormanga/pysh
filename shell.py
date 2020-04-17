@@ -78,4 +78,4 @@ class exit(BuiltinCommand):
 
 builtin_commands = {i.__name__: i for i in BuiltinCommand.__subclasses__()}
 
-# by Sdore, 2019
+# by Sdore, 2020

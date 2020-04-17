@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # PySH
 
-import git, PyT9, codeop, readline, rlcompleter
+import git, PyT9, readline
 from . import env, shell
 from utils.nolog import *
 
@@ -36,13 +36,30 @@ def readexpr(c=''):
 		exit()
 	return expr(c)
 
+def parseexpr(scg):
+	sc = list()
+	for i in scg.parts:
+		if (i.kind == 'word'):
+			sc += (parseexpr(i) or [i.word])
+		elif (i.kind == 'parameter'):
+			sc.append(os.getenv(i.value, ''))
+		elif (i.kind == 'commandsubstitution'): # TODO: non-successful
+			assert (len(scg.parts) == 1)
+			sc.append(expr(regex.match(r'(?| \$\((.*)\) | `(.*)`)', scg.word, re.S | re.X)[1]).getoutput().replace('\n', ' '))
+		else: raise WTFException(i)
+	return sc
+
 def expr(c):
-	# TODO: proper expansion and other processing
-	c = re.sub(r'(?<!\\)`(.*?)(?<!\\)`', lambda x: ' '.join(expr(x[1]).getoutput().split()), c) # FIXME wrong pattern 🤔️
+	if (not c.strip()): sys.stderr.write('\033[A\033[K\n'); return
+
 	if (c[:3] in ('sh:', 'py:')): mode, _, c = c.partition(':')
 	else: mode = None
-	c = c.strip()
-	sc = re.split(r'(?<!\\) ', c)
+
+	try: scg = bashlex.parsesingle(c)
+	except bashlex.errors.ParsingError as ex:
+		if (mode == 'sh'): sys.stderr.write(f"\033[91m{type(ex).__name__}\033[0m{f': {ex}' if (str(ex)) else ''}\n"); return
+		else: mode = 'py'
+	else: sc = parseexpr(scg)
 
 	if (mode != 'py'):
 		if (sc[0] in shell.builtin_commands): return shell.builtin_commands[sc[0]](*sc)
@@ -101,4 +118,4 @@ def main():
 
 if (__name__ == '__main__'): exit(main())
 
-# by Sdore, 2019
+# by Sdore, 2020
